@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from collections.abc import AsyncIterator
 from typing import Any, overload
 
@@ -12,6 +13,18 @@ from .config import LLMConfig
 from .types import LLMResponse, Message, Tool, UsageStats
 
 logger = logging.getLogger(__name__)
+
+_THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
+
+
+def _strip_think_blocks(text: str) -> str:
+    """Strip <think>...</think> reasoning blocks (MiniMax-M3, DeepSeek-R1, etc.).
+
+    Leaves the rest of the content untouched. Returns text unchanged if no block.
+    """
+    if "<think>" not in text:
+        return text
+    return _THINK_BLOCK_RE.sub("", text).strip()
 
 
 class BudgetExceeded(Exception):
@@ -217,8 +230,11 @@ class LLMClient:
                 }
                 for tc in msg.tool_calls
             ]
+        # MiniMax-M3 / DeepSeek-R1 style models emit <think>...</think> blocks.
+        # Strip them so downstream stages get clean text.
+        content = _strip_think_blocks(msg.content or "")
         return LLMResponse(
-            content=msg.content or "",
+            content=content,
             tool_calls=tool_calls,
             finish_reason=choice.finish_reason,
             usage=usage,
