@@ -107,6 +107,20 @@ class KBIndex:
         self._persist_dir = persist_dir
         self._init_error = None
 
+    def reset(self) -> None:
+        """Drop the KB collection entirely. Used by `--reset` in ingest script.
+
+        After reset() the index is unusable until init() is called again.
+        """
+        if self._client is None:
+            return
+        try:
+            self._client.delete_collection(name="solution_kb")
+        except Exception as e:
+            logger.warning(f"[KBIndex] delete_collection failed: {e}")
+        self._collection = None
+        self._init_error = None
+
     def add(self, doc_id: str, text: str, metadata: dict[str, Any]) -> None:
         """Add (or upsert) a single document chunk into the KB."""
         self._require_init()
