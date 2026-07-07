@@ -159,9 +159,12 @@ class StageHandler(Protocol):
 
 ### 4.5 PDF 库决策
 
-- **首选**：WeasyPrint（Markdown → HTML → PDF 路径自然）
-- **降级**：fpdf2（纯 Python，无原生依赖，Windows 友好）
-- **决策时机**：P0 阶段在 Windows 上验证 WeasyPrint 可用性；失败则在 P3 切到 fpdf2，并在 spec 上更新
+> **决策记录**（P0，2026-07-07）：**使用 fpdf2**。
+> 验证结果：WeasyPrint 69.0 在 Windows 上 import 失败（`OSError: cannot load library 'libgobject-2.0-0'`，需 GTK 原生依赖，未自动安装）。fpdf2 2.8.7 立即可用，生成 994 字节测试 PDF 成功。
+
+- **当前选择**：fpdf2（纯 Python，无原生依赖，Windows 友好）
+- **如果未来要换回 WeasyPrint**：需先安装 GTK3 运行时（MSYS2 / MSVC redistributable）
+- P3 实施时按 fpdf2 写 `export_report` 工具（直接用 FPDF API 输出，比 markdown→HTML→PDF 路径少一步）
 - P3 验收标准：能在目标环境生成一份 5 章节 + 来源的 PDF
 
 ### 4.3 存储布局
