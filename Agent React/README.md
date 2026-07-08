@@ -37,14 +37,21 @@ EMBED_MODEL=text-embedding-3-small
 
 ### 3. 初始化 KB（一次性）
 
-**必须在项目根目录运行**（脚本路径 `scripts/ingest_kb.py` 是相对的）：
+**必须在项目根目录运行**（脚本路径 `scripts/ingest_kb.py` 是相对的）。
 
-```bash
-cd "D:\工作\医保热线\Agent React"
+**CMD**（命令提示符）：
+```cmd
+cd /d "D:\工作\医保热线\Agent React"
 "D:\工作\医保热线\.venv\Scripts\python.exe" scripts/ingest_kb.py --reset
 ```
 
-或者一行版（PowerShell）：
+**PowerShell**（必须用 `&` 调用运算符）：
+```powershell
+cd "D:\工作\医保热线\Agent React"
+& "D:\工作\医保热线\.venv\Scripts\python.exe" scripts/ingest_kb.py --reset
+```
+
+**PowerShell 一行版**（不切换 cwd）：
 ```powershell
 Push-Location "D:\工作\医保热线\Agent React"; & "D:\工作\医保热线\.venv\Scripts\python.exe" scripts/ingest_kb.py --reset; Pop-Location
 ```
