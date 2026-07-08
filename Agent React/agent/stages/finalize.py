@@ -57,9 +57,10 @@ class FinalizeHandler(BaseStage):
         if not ok:
             return StageResult(reply=f"方案未通过校验：{reason}。请先修正再生成最终报告。")
 
-        # Call export_report tool
-        import agent.tools.export_report as export_mod
-        res_str = await export_mod.export_report(session_id=session.id, format="pdf")
+        # Call export_report tool. Note: agent.tools/__init__.py shadows the
+        # submodule with the function, so the function lives at agent.tools.export_report.
+        from agent.tools import export_report as export_fn
+        res_str = await export_fn(session_id=session.id, format="pdf")
         try:
             res = json.loads(res_str)
         except Exception:

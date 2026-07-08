@@ -130,13 +130,13 @@ class Orchestrator:
     async def _parse_files(self, files: list[str]) -> str:
         """Parse uploaded files using parse_doc tool. Concatenate wrapped content."""
         try:
-            import agent.tools.parse_doc as parse_doc_mod
+            from agent.tools import parse_doc as parse_doc_fn
         except ImportError:
             return ""
         out: list[str] = []
         for fp in files:
             try:
-                content = await parse_doc_mod.parse_doc(file_path=fp)
+                content = await parse_doc_fn(file_path=fp)
                 out.append(f"\n--- {fp} ---\n{content}\n")
             except Exception as e:
                 logger.warning(f"parse_doc({fp}) failed: {e}")
