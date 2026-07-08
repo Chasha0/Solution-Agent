@@ -206,9 +206,30 @@ class LLMClient:
         elif self.config.max_tokens is not None:
             kwargs["max_tokens"] = self.config.max_tokens
         if tools:
-            kwargs["tools"] = [t.to_dict() for t in tools]
+            kwargs["tools"] = [self._tool_to_payload(t) for t in tools]
             kwargs["tool_choice"] = "auto"
         return kwargs
+
+    @staticmethod
+    def _tool_to_payload(tool: Any) -> dict[str, Any]:
+        """Convert a tool spec (ToolSpec or agent.llm.types.Tool) to OpenAI API dict.
+
+        Accepts both shapes:
+        - agent.tools.ToolSpec (from all_specs()) — dataclass with name/description/parameters
+        - agent.llm.types.Tool — has to_dict()
+        """
+        # agent.llm.types.Tool already has to_dict
+        if hasattr(tool, "to_dict") and callable(tool.to_dict):
+            return tool.to_dict()
+        # agent.tools.ToolSpec — build the dict directly
+        return {
+            "type": "function",
+            "function": {
+                "name": tool.name,
+                "description": tool.description,
+                "parameters": tool.parameters,
+            },
+        }
 
     def _parse_response(self, resp: Any) -> LLMResponse:
         choice = resp.choices[0]
