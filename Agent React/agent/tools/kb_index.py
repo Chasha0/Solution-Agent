@@ -121,10 +121,10 @@ class KBIndex:
         self._collection = None
         self._init_error = None
 
-    def add(self, doc_id: str, text: str, metadata: dict[str, Any]) -> None:
-        """Add (or upsert) a single document chunk into the KB."""
+    async def add(self, doc_id: str, text: str, metadata: dict[str, Any]) -> None:
+        """Add (or upsert) a single document chunk into the KB. Async."""
         self._require_init()
-        emb = self._embed_blocking([text])
+        emb = await self.embed([text])
         # Chroma upserts on duplicate ids by default
         self._collection.upsert(
             ids=[doc_id],
@@ -133,8 +133,8 @@ class KBIndex:
             metadatas=[metadata or {}],
         )
 
-    def search(self, query: str, top_k: int = 5) -> list[dict[str, Any]]:
-        """Semantic search; returns `[{chunk, score, source}]`.
+    async def search(self, query: str, top_k: int = 5) -> list[dict[str, Any]]:
+        """Semantic search; returns `[{chunk, score, source}]`. Async.
 
         Empty list if the collection is empty. Score is cosine similarity
         (distance → similarity via `1 - d`).
@@ -144,7 +144,7 @@ class KBIndex:
         if total == 0:
             return []
         n = min(max(top_k, 1), total)
-        query_emb = self._embed_blocking([query])
+        query_emb = await self.embed([query])
         res = self._collection.query(
             query_embeddings=query_emb,
             n_results=n,
@@ -210,6 +210,39 @@ class KBIndex:
         )
         return [self._pseudo_embed(t) for t in texts]
 
+    def _embed_config(self) -> tuple[str, str, str]:
+        """Resolve embed API key/base_url/model from env.
+
+        EMBED_* takes precedence; falls back to OPENAI_* for backward compat.
+        """
+        api_key = (
+            os.getenv("EMBED_API_KEY", "").strip()
+            or os.getenv("OPENAI_API_KEY", "").strip()
+        )
+        base_url = (
+            os.getenv("EMBED_BASE_URL", "").strip()
+            or os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").strip()
+        )
+        model = os.getenv("EMBED_MODEL", "text-embedding-3-small").strip()
+        return api_key, base_url, model
+
+    def _get_embed_client(self):
+        """Return a cached AsyncOpenAI client for the embed provider.
+
+        Reusing one client (instead of per-call new) prevents the
+        "Event loop is closed" cleanup errors that surface as warnings
+        after script exit.
+        """
+        if getattr(self, "_embed_client", None) is None:
+            from openai import AsyncOpenAI
+
+            api_key, base_url, _ = self._embed_config()
+            self._embed_client = AsyncOpenAI(
+                api_key=api_key, base_url=base_url, timeout=15.0
+            )
+            self._embed_config_cached_at = (api_key, base_url)
+        return self._embed_client
+
     async def embed(self, texts: list[str]) -> list[list[float]]:
         """Embed via OpenAI-compatible API; fall back to pseudo-vectors.
 
@@ -218,29 +251,39 @@ class KBIndex:
         meaningful retrieval; this path exists so the demo doesn't crash when
         the provider is unreachable.
         """
-        api_key = os.getenv("OPENAI_API_KEY", "").strip()
-        base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").strip()
-        embed_model = os.getenv("EMBED_MODEL", "text-embedding-3-small").strip()
+        api_key, base_url, embed_model = self._embed_config()
 
         if api_key and api_key != "sk-xxx":
             try:
-                from openai import AsyncOpenAI
-
-                client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=15.0)
+                client = self._get_embed_client()
                 resp = await client.embeddings.create(model=embed_model, input=texts)
                 vectors = [list(d.embedding) for d in resp.data]
                 if vectors:
                     self._embed_dim = len(vectors[0])
+                # Reset fallback flag on success
+                self._fallback_warned = False
                 return vectors
             except Exception as e:
-                logger.warning(
-                    f"[KBIndex] embed API failed ({type(e).__name__}: {e}); "
-                    "falling back to deterministic pseudo-vectors (DEMO ONLY)."
-                )
+                self._warn_fallback_once(e)
         else:
-            logger.warning("[KBIndex] OPENAI_API_KEY not set; using pseudo-vectors (DEMO ONLY).")
+            self._warn_fallback_once("OPENAI/EMBED API key not set")
 
         return [self._pseudo_embed(t) for t in texts]
+
+    def _warn_fallback_once(self, cause: Any) -> None:
+        """Emit fallback warning only on the first occurrence per process.
+
+        Subsequent calls log at debug level to avoid spamming the ingest log.
+        """
+        if not getattr(self, "_fallback_warned", False):
+            logger.warning(
+                f"[KBIndex] embed API failed ({type(cause).__name__}: {cause}); "
+                "falling back to deterministic pseudo-vectors (DEMO ONLY). "
+                "Further failures will log at debug level."
+            )
+            self._fallback_warned = True
+        else:
+            logger.debug(f"[KBIndex] embed fallback (cause: {cause})")
 
     def _pseudo_embed(self, text: str) -> list[float]:
         """Deterministic random unit vector derived from SHA-256(text).
@@ -262,18 +305,18 @@ class KBIndex:
 # ----- module-level shortcuts (used by kb_search tool) -----
 
 
-def search(query: str, top_k: int = 5) -> list[dict[str, Any]]:
-    """Singleton convenience wrapper: `KBIndex.get().search(query, top_k)`."""
-    return KBIndex.get().search(query, top_k=top_k)
+async def search(query: str, top_k: int = 5) -> list[dict[str, Any]]:
+    """Async singleton shortcut: `await KBIndex.get().search(query, top_k)`."""
+    return await KBIndex.get().search(query, top_k=top_k)
 
 
-def add(doc_id: str, text: str, metadata: dict[str, Any]) -> None:
-    """Singleton convenience wrapper: `KBIndex.get().add(doc_id, text, metadata)`."""
-    KBIndex.get().add(doc_id, text, metadata)
+async def add(doc_id: str, text: str, metadata: dict[str, Any]) -> None:
+    """Async singleton shortcut: `await KBIndex.get().add(doc_id, text, metadata)`."""
+    await KBIndex.get().add(doc_id, text, metadata)
 
 
 def count() -> int:
-    """Singleton convenience wrapper: `KBIndex.get().count()`."""
+    """Sync shortcut: `KBIndex.get().count()`. No embed involved, safe."""
     return KBIndex.get().count()
 
 

@@ -39,7 +39,7 @@ async def kb_search(query: str, top_k: int = 5) -> str:
                 [{"error": "KB not initialized; run scripts/ingest_kb.py"}],
                 ensure_ascii=False,
             )
-        results = index.search(query, top_k=top_k)
+        results = await index.search(query, top_k=top_k)
         return json.dumps(results, ensure_ascii=False)
     except Exception as e:
         logger.exception("[kb_search] search failed")

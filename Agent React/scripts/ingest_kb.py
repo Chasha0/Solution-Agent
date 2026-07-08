@@ -11,6 +11,7 @@ Idempotent: re-running updates existing docs by source path.
 from __future__ import annotations
 
 import argparse
+import asyncio
 import hashlib
 import logging
 import sys
@@ -22,6 +23,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from agent.tools.kb_index import KBIndex  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+# Silence noisy third-party INFO logs (httpx/OpenAI HTTP request lines).
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("openai").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 log = logging.getLogger("ingest_kb")
 
 CHARS_PER_CHUNK = 500
@@ -144,11 +149,13 @@ def main() -> int:
             continue
         chunks = chunk_text(text)
         for i, c in enumerate(chunks):
-            idx.add(
+            # idx.add is async; run each call. Batch add would be faster but
+            # batch size constraints differ per embed provider.
+            asyncio.run(idx.add(
                 doc_id=doc_id_for(f, i),
                 text=c,
                 metadata={"source": str(f.relative_to(kb_dir)), "chunk_index": i},
-            )
+            ))
         log.info(f"  + {f.relative_to(kb_dir)}: {len(chunks)} chunks")
         total_chunks += len(chunks)
 
