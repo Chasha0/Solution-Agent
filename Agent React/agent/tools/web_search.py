@@ -24,6 +24,11 @@ from .base import ToolSpec
 logger = logging.getLogger(__name__)
 
 _TIMEOUT_S = 8.0
+# DDG fallback uses a tighter timeout because (a) DuckDuckGo HTML scraping
+# is unreliable and (b) this machine often can't reach it at all. Failing fast
+# lets the agent fall back to KB-only results instead of burning the whole
+# stage budget on connection timeouts.
+_DDG_TIMEOUT_S = 3.0
 
 # DDG HTML result markup (subject to change; this is what works as of 2024).
 _DDG_TITLE_RE = re.compile(
@@ -94,7 +99,7 @@ async def _search_tavily(query: str, max_results: int) -> list[dict[str, Any]]:
 
 async def _search_duckduckgo(query: str, max_results: int) -> list[dict[str, Any]]:
     async with httpx.AsyncClient(
-        timeout=_TIMEOUT_S,
+        timeout=_DDG_TIMEOUT_S,
         follow_redirects=True,
         headers={
             "User-Agent": (

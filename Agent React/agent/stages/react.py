@@ -4,6 +4,7 @@ Per spec §3 research / design rows: ReAct loop with explicit tool budgets.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import Any
@@ -21,6 +22,7 @@ async def run_react(
     *,
     allowed_tool_names: list[str] | None = None,
     max_iters: int = 8,
+    per_tool_timeout_s: float = 20.0,
     extra_tool_specs: list[Tool] | None = None,
 ) -> tuple[str, list[dict[str, Any]]]:
     """Run a ReAct loop until the LLM produces a final answer (no tool calls).
@@ -97,7 +99,16 @@ async def run_react(
                 )
             else:
                 try:
-                    result_str = await spec.handler(**args)
+                    result_str = await asyncio.wait_for(
+                        spec.handler(**args),
+                        timeout=per_tool_timeout_s,
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning(f"Tool {name} timed out after {per_tool_timeout_s}s")
+                    result_str = json.dumps(
+                        {"error": f"timeout after {per_tool_timeout_s}s"},
+                        ensure_ascii=False,
+                    )
                 except Exception as e:
                     logger.warning(f"Tool {name} failed: {e}")
                     result_str = json.dumps(

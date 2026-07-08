@@ -50,11 +50,12 @@ class ResearchHandler(BaseStage):
         messages: list[Message] = [Message.system(system)]
         messages.extend(self.format_history(session, last_n=10))
 
-        # ReAct loop
+        # ReAct loop (4 iters × ~20s tool budget ≈ 80s, well under the 120s stage cap)
         final_content, tool_history = await run_react(
             llm, messages, tools,
             allowed_tool_names=self.required_tools,
-            max_iters=6,
+            max_iters=4,
+            per_tool_timeout_s=20.0,
         )
 
         # Count sources
