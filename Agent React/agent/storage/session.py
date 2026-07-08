@@ -183,6 +183,32 @@ class Session:
         self._meta.status = status
         self.save()
 
+    # ---- current_run (real-time in-flight marker) ----
+
+    @property
+    def current_run(self) -> dict | None:
+        return self._meta.current_run
+
+    def set_current_run(self, stage: Stage) -> None:
+        """Mark that a handler is currently executing ``stage``. Saved immediately.
+
+        Cleared by :meth:`clear_current_run` when the handler returns. The
+        UI uses this to show "⟳ research" instead of "✓ research" while a
+        stage is actively running.
+        """
+        from datetime import datetime, timezone
+
+        self._meta.current_run = {
+            "stage": stage.value if hasattr(stage, "value") else str(stage),
+            "started_at": datetime.now(timezone.utc).isoformat(),
+        }
+        self.save()
+
+    def clear_current_run(self) -> None:
+        """Clear the in-flight marker. Called when a handler finishes."""
+        self._meta.current_run = None
+        self.save()
+
     def record_stage(self, stage: Stage) -> None:
         """Alias for :meth:`set_stage` — semantically "this stage completed".
 
@@ -256,7 +282,8 @@ class Session:
 
         Authoritative fields (in-memory wins):
             ``current_stage``, ``status``, ``stage_history``, ``customer``,
-            and the immutable ``schema_version`` / ``session_id`` / ``created_at``.
+            ``current_run``, and the immutable ``schema_version`` /
+            ``session_id`` / ``created_at``.
 
         External-owned field (disk wins, augmented by memory):
             ``version_counts`` — merged as ``{**disk, **memory}`` so both
@@ -273,6 +300,7 @@ class Session:
             status=memory_meta.status,
             stage_history=list(memory_meta.stage_history),
             version_counts={**disk_meta.version_counts, **memory_meta.version_counts},
+            current_run=memory_meta.current_run,
         )
 
     # ---- destructive ----

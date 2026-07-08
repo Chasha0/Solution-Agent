@@ -69,6 +69,13 @@ class MetaDict(BaseModel):
     status: SessionStatus = SessionStatus.active
     stage_history: list[Stage] = Field(default_factory=list)
     version_counts: dict[str, int] = Field(default_factory=dict)
+    # Marker for an in-flight handler invocation. Set by the orchestrator
+    # right before dispatching to a stage handler; cleared when the handler
+    # returns (success or failure). Lets the UI distinguish "stage that
+    # completed last" from "stage currently executing".
+    # Shape: {"stage": "research", "started_at": "2026-07-08T12:34:56+00:00"}
+    # or None when no handler is running.
+    current_run: dict | None = None
 
 
 def meta_to_dict(meta: MetaDict) -> dict:

@@ -9,3 +9,9 @@ __pycache__/
 
 # Orchestrator scratch space (deepwork notes, transient)
 .slim/
+
+# Runtime data (regenerated on demand; kb/sources/ is kept)
+sessions/
+kb/*.sqlite3
+kb/*.sqlite3-journal
+kb/chroma/

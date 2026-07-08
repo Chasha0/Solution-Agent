@@ -93,7 +93,10 @@ class Orchestrator:
             # terminal stage
             return StageResult(reply=f"阶段 {target_stage.value} 无对应 handler。")
 
-        # 7) Run with timeout
+        # 7) Run with timeout. Set current_run BEFORE the handler call so the
+        # UI can show "⟳ <stage>" while the handler is in flight; clear in the
+        # finally block so the marker is removed even on crash/timeout.
+        session.set_current_run(target_stage)
         try:
             effective_user_msg = user_msg
             if file_context:
@@ -112,6 +115,11 @@ class Orchestrator:
             result = StageResult(
                 reply=f"执行出错：{type(e).__name__}: {e}。可重试或联系管理员。",
             )
+        finally:
+            try:
+                session.clear_current_run()
+            except Exception as e:
+                logger.warning(f"clear_current_run failed: {e}")
 
         # 8) Save
         if result.next_stage is not None and result.next_stage != session.stage:

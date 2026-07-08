@@ -228,11 +228,47 @@ if not st.session_state.session_id:
     )
     st.stop()
 
+# ---- sticky progress bar CSS ----
+# Streamlit's page is rendered inside an iframe; position:sticky pins the
+# element to the viewport top while the user scrolls chat history.
+st.markdown(
+    """
+    <style>
+    .sticky-progress {
+        position: sticky;
+        top: 0;
+        z-index: 999;
+        background: white;
+        padding: 0.5rem 0 0.75rem 0;
+        border-bottom: 1px solid #e0e0e0;
+        margin-bottom: 0.5rem;
+    }
+    .running-pulse {
+        display: inline-block;
+        animation: pulse 1.4s ease-in-out infinite;
+        color: #ff8c00;
+        font-weight: 600;
+    }
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.4; }
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 # Session loaded: render
 s = Session.load(st.session_state.session_id)
 st.session_state.last_stage = s.stage
 
-# Top: progress bar
+# Detect whether a stage handler is currently executing (set by orchestrator
+# right before dispatching, cleared in the finally block).
+running_stage_value: str | None = None
+if s.current_run and isinstance(s.current_run, dict):
+    running_stage_value = s.current_run.get("stage")
+
+# Top: progress bar (sticky via CSS class)
 stages = [
     (Stage.clarify, "需求澄清"),
     (Stage.research, "调研"),
@@ -240,19 +276,42 @@ stages = [
     (Stage.design, "方案"),
     (Stage.finalize, "终稿"),
 ]
-current_idx = next((i for i, (stg, _) in enumerate(stages) if stg == s.stage), 0)
+
+# Resolve which stage index is "currently running" (if any).
+# Priority: 1) running_stage (real-time), 2) session.stage (last completed)
+current_idx = next(
+    (i for i, (stg, _) in enumerate(stages) if stg.value == running_stage_value),
+    next((i for i, (stg, _) in enumerate(stages) if stg == s.stage), 0),
+)
 if s.status == SessionStatus.completed:
     current_idx = len(stages) - 1
 
+st.markdown('<div class="sticky-progress">', unsafe_allow_html=True)
 cols = st.columns(len(stages))
 for i, (stg, label) in enumerate(stages):
     with cols[i]:
-        if i < current_idx:
+        is_running = stg.value == running_stage_value
+        if is_running:
+            st.markdown(
+                f'<div class="running-pulse">⟳ {label}</div>',
+                unsafe_allow_html=True,
+            )
+        elif i < current_idx:
             st.success(f"✓ {label}")
         elif i == current_idx:
             st.info(f"● {label}")
         else:
             st.caption(f"○ {label}")
+
+# While a stage is running, force a periodic rerun so the indicator stays
+# alive. Without this, the user has to interact for the UI to refresh.
+if running_stage_value is not None:
+    import time as _time
+
+    _time.sleep(0.3)
+    st.rerun()
+
+st.markdown("</div>", unsafe_allow_html=True)
 
 st.divider()
 
