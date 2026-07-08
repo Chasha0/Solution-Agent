@@ -50,11 +50,12 @@ class ResearchHandler(BaseStage):
         messages: list[Message] = [Message.system(system)]
         messages.extend(self.format_history(session, last_n=10))
 
-        # ReAct loop (4 iters × ~20s tool budget ≈ 80s, well under the 120s stage cap)
-        final_content, tool_history = await run_react(
+        # ReAct loop (6 iters × ~15s avg per iter ≈ 90s, under the 120s stage cap).
+# Tavily is fast (~2-5s) and per-tool timeout is 20s, so this fits with margin.
+final_content, tool_history = await run_react(
             llm, messages, tools,
             allowed_tool_names=self.required_tools,
-            max_iters=4,
+            max_iters=6,
             per_tool_timeout_s=20.0,
         )
 
